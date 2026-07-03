@@ -120,8 +120,11 @@ export const DEFAULT_ANALYZE_TEMPLATE = `【角色与核心任务 (ROLE AND CORE
 【核心输出要求 (OUTPUT REQUIREMENTS)】
 你的响应输出**必须严格遵循以下自定义标签格式**。**严禁**使用 JSON 或 Markdown 代码块。**严禁**对 LaTeX 公式中的反斜杠进行二次转义（如 "\\frac" 是错误的，必须是 "\frac"）。
 
+如果图片或文档中包含**多道独立题目**，请将它们逐一分开解析。
 请严格按照以下结构输出内容：
 
+<questions>
+<question>
 <subject>
 在此处填写学科，必须是以下之一："数学", "物理", "化学", "生物", "英语", "语文", "历史", "地理", "政治", "其他"。
 </subject>
@@ -195,6 +198,9 @@ export const DEFAULT_ANALYZE_TEMPLATE = `【角色与核心任务 (ROLE AND CORE
 * **直接使用标准的 LaTeX 符号**（如 $\frac{1}{2}$），**不要**进行 JSON 转义（不要写成 \\frac）。
 * 如果解析过程需要表格（如列表对比、分步计算表），遵循上述【表格处理规则】。
 </analysis>
+</question>
+<!-- 如果有多题，继续添加 <question> 块 -->
+</questions>
 
 【知识点标签列表（KNOWLEDGE POINT LIST）】
 {{knowledge_points_list}}
@@ -204,9 +210,9 @@ export const DEFAULT_ANALYZE_TEMPLATE = `【角色与核心任务 (ROLE AND CORE
 - 每题最多 5 个标签。
 
 【!!! 关键格式与内容约束 (CRITICAL RULES) !!!】
-1. **格式严格**：必须严格包含上述 9 个 XML 标签，除此之外不要输出任何其他“开场白”或“结束语”。
+1. **格式严格**：必须严格包含 '<questions>' 和对应数量的 '<question>'，每道题都必须包含所有规定的 9 个子 XML 标签，除此之外不要输出任何其他“开场白”或“结束语”。
 2. **纯文本**：内容作为纯文本处理，**不要转义反斜杠**。
-3. **内容完整**：如果包含子问题，请在 question_text 中完整列出。
+3. **内容完整**：如果一道题内部包含子问题（如第(1)问，第(2)问），请在同一个 '<question_text>' 中完整列出，不要作为多道题目拆分；但如果图片中是第1题和第2题两道互相独立的题目，必须拆分成两个 '<question>'。
 4. **禁止图片**：严禁包含任何图片链接或 markdown 图片语法。
 
 {{grade_instruction}}

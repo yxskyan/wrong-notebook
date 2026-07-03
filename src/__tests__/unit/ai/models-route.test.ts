@@ -21,14 +21,14 @@ vi.mock('@/lib/logger', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { GET } from '@/app/api/ai/models/route';
+import { POST } from '@/app/api/ai/models/route';
 
 function makeRequest(params: Record<string, string>): NextRequest {
-    const url = new URL('http://localhost/api/ai/models');
-    for (const [k, v] of Object.entries(params)) {
-        url.searchParams.set(k, v);
-    }
-    return new NextRequest(url);
+    return new NextRequest('http://localhost/api/ai/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+    });
 }
 
 describe('GET /api/ai/models - Gemini provider', () => {
@@ -49,7 +49,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
         });
 
         const req = makeRequest({ provider: 'gemini', apiKey: 'test-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);
@@ -74,7 +74,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
             apiKey: 'my-key',
             baseUrl: 'https://custom.google.com',
         });
-        await GET(req);
+        await POST(req);
 
         expect(mockFetch).toHaveBeenCalledWith(
             'https://custom.google.com/v1beta/models?key=my-key',
@@ -96,7 +96,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
         });
 
         const req = makeRequest({ provider: 'gemini', apiKey: 'test-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(body.models).toHaveLength(4);
@@ -115,7 +115,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
         });
 
         const req = makeRequest({ provider: 'gemini', apiKey: 'test-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);
@@ -129,7 +129,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
         });
 
         const req = makeRequest({ provider: 'gemini', apiKey: 'test-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);
@@ -144,7 +144,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
         });
 
         const req = makeRequest({ provider: 'gemini', apiKey: 'bad-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);
@@ -154,7 +154,7 @@ describe('GET /api/ai/models - Gemini provider', () => {
 
     it('缺少 apiKey 时应返回 400', async () => {
         const req = makeRequest({ provider: 'gemini' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(400);
@@ -180,7 +180,7 @@ describe('GET /api/ai/models - OpenAI provider', () => {
         });
 
         const req = makeRequest({ apiKey: 'test-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);
@@ -198,7 +198,7 @@ describe('GET /api/ai/models - OpenAI provider', () => {
         });
 
         const req = makeRequest({ apiKey: 'bad-key' });
-        const res = await GET(req);
+        const res = await POST(req);
         const body = await res.json();
 
         expect(res.status).toBe(200);

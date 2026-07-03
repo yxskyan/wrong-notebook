@@ -27,12 +27,13 @@ import { useSession } from "next-auth/react";
 import { UserManagement } from "@/components/admin/user-management";
 import { apiClient } from "@/lib/api-client";
 import { frontendLogger } from "@/lib/frontend-logger";
-import { AppConfig, UserProfile, UpdateUserProfileRequest, OpenAIInstance } from "@/types/api";
+import { AppConfig, UserProfile, UpdateUserProfileRequest, OpenAIInstance, CustomAIInstance } from "@/types/api";
 import { ModelSelector } from "@/components/ui/model-selector";
 import { PromptSettings } from "@/components/settings/prompt-settings";
 
 import { MessageSquareText, Info, ExternalLink, Github, ScrollText } from "lucide-react";
 const MAX_OPENAI_INSTANCES = 10;
+const MAX_CUSTOM_INSTANCES = 10;
 
 // 生成唯一 ID
 function generateId(): string {
@@ -67,6 +68,8 @@ export function SettingsDialog() {
     const [config, setConfig] = useState<AppConfig>({ aiProvider: 'gemini' });
     // OpenAI 多实例状态
     const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+    // Custom 多实例状态
+    const [selectedCustomInstanceId, setSelectedCustomInstanceId] = useState<string | undefined>(undefined);
 
     // AI 连接测试状态
     const [testing, setTesting] = useState(false);
@@ -164,6 +167,27 @@ export function SettingsDialog() {
         return null;
     };
 
+    // 验证 Custom 实例必填字段
+    const validateCustomInstances = (): string | null => {
+        if (config.aiProvider !== 'custom') return null;
+        const instances = config.custom?.instances || [];
+        for (const instance of instances) {
+            if (!instance.name?.trim()) {
+                return t.settings?.ai?.validationNameRequired || '实例名称不能为空';
+            }
+            if (!instance.apiKey?.trim()) {
+                return t.settings?.ai?.validationApiKeyRequired || 'API Key 不能为空';
+            }
+            if (!instance.baseUrl?.trim()) {
+                return t.settings?.ai?.validationBaseUrlRequired || 'Base URL 不能为空';
+            }
+            if (!instance.model?.trim()) {
+                return t.settings?.ai?.validationModelRequired || '模型名称不能为空';
+            }
+        }
+        return null;
+    };
+
     // 验证 Azure OpenAI 必填字段
     const validateAzureConfig = (): string | null => {
         if (config.aiProvider !== 'azure') return null;
@@ -191,6 +215,13 @@ export function SettingsDialog() {
         const azureValidationError = validateAzureConfig();
         if (azureValidationError) {
             alert(azureValidationError);
+            return;
+        }
+
+        // 验证 Custom 实例必填字段
+        const customValidationError = validateCustomInstances();
+        if (customValidationError) {
+            alert(customValidationError);
             return;
         }
 
@@ -475,7 +506,7 @@ export function SettingsDialog() {
         }
     };
 
-    const updateConfig = (section: 'openai' | 'gemini', key: string, value: string) => {
+    const updateConfig = (section: 'gemini', key: string, value: any) => {
         if (section === 'gemini') {
             setConfig(prev => ({
                 ...prev,
@@ -485,7 +516,7 @@ export function SettingsDialog() {
                 }
             }));
         }
-        // OpenAI 配置更新通过 updateOpenAIInstance 处理
+        // OpenAI 和 Custom 配置更新通过对应的 updateInstance 处理
     };
 
     // 获取当前选中的 OpenAI 实例
@@ -496,7 +527,7 @@ export function SettingsDialog() {
     };
 
     // 更新当前选中的 OpenAI 实例属性
-    const updateOpenAIInstance = (key: keyof OpenAIInstance, value: string) => {
+    const updateOpenAIInstance = (key: keyof OpenAIInstance, value: any) => {
         const instances = config.openai?.instances || [];
         const activeId = selectedInstanceId || config.openai?.activeInstanceId;
         const updatedInstances = instances.map(instance =>
@@ -569,6 +600,87 @@ export function SettingsDialog() {
         }
     }, [config.openai?.activeInstanceId, selectedInstanceId]);
 
+    // 获取当前选中的 Custom 实例
+    const getSelectedCustomInstance = (): CustomAIInstance | undefined => {
+        const instances = config.custom?.instances || [];
+        const activeId = selectedCustomInstanceId || config.custom?.activeInstanceId;
+        return instances.find(i => i.id === activeId);
+    };
+
+    // 更新当前选中的 Custom 实例属性
+    const updateCustomInstance = (key: keyof CustomAIInstance, value: any) => {
+        const instances = config.custom?.instances || [];
+        const activeId = selectedCustomInstanceId || config.custom?.activeInstanceId;
+        const updatedInstances = instances.map(instance =>
+            instance.id === activeId ? { ...instance, [key]: value } : instance
+        );
+        setConfig(prev => ({
+            ...prev,
+            custom: {
+                ...prev.custom,
+                instances: updatedInstances,
+            }
+        }));
+    };
+
+    // 添加新的 Custom 实例
+    const addCustomInstance = () => {
+        const instances = config.custom?.instances || [];
+        if (instances.length >= MAX_CUSTOM_INSTANCES) return;
+
+        const newInstance: CustomAIInstance = {
+            id: generateId(),
+            name: `Custom Model ${instances.length + 1}`,
+            apiKey: '',
+            baseUrl: '',
+            model: '',
+        };
+
+        setConfig(prev => ({
+            ...prev,
+            custom: {
+                instances: [...(prev.custom?.instances || []), newInstance],
+                activeInstanceId: newInstance.id,
+            }
+        }));
+        setSelectedCustomInstanceId(newInstance.id);
+    };
+
+    // 删除 Custom 实例
+    const deleteCustomInstance = (instanceId: string) => {
+        const instances = config.custom?.instances || [];
+        const updatedInstances = instances.filter(i => i.id !== instanceId);
+        const newActiveId = updatedInstances.length > 0 ? updatedInstances[0].id : undefined;
+
+        setConfig(prev => ({
+            ...prev,
+            custom: {
+                instances: updatedInstances,
+                activeInstanceId: newActiveId,
+            }
+        }));
+        setSelectedCustomInstanceId(newActiveId);
+    };
+
+    // 切换激活的 Custom 实例
+    const setActiveCustomInstance = (instanceId: string) => {
+        setSelectedCustomInstanceId(instanceId);
+        setConfig(prev => ({
+            ...prev,
+            custom: {
+                ...prev.custom,
+                activeInstanceId: instanceId,
+            }
+        }));
+    };
+
+    // 同步 selectedCustomInstanceId 与 config
+    useEffect(() => {
+        if (config.custom?.activeInstanceId && !selectedCustomInstanceId) {
+            setSelectedCustomInstanceId(config.custom.activeInstanceId);
+        }
+    }, [config.custom?.activeInstanceId, selectedCustomInstanceId]);
+
     const updatePrompts = (type: 'analyze' | 'similar', value: string) => {
         setConfig(prev => ({
             ...prev,
@@ -625,6 +737,20 @@ export function SettingsDialog() {
                     deploymentName: config.azure.deploymentName,
                     apiVersion: config.azure.apiVersion,
                     model: config.azure.model,
+                    language: language
+                };
+            } else if (config.aiProvider === 'custom') {
+                const instance = getSelectedCustomInstance();
+                if (!instance?.apiKey) {
+                    setTestResult({ success: false, textSupport: false, visionSupport: false, textError: t.settings?.ai?.validationApiKeyRequired || 'API Key is required' });
+                    setTesting(false);
+                    return;
+                }
+                requestBody = {
+                    provider: 'custom',
+                    apiKey: instance.apiKey,
+                    baseUrl: instance.baseUrl,
+                    model: instance.model,
                     language: language
                 };
             } else {
@@ -908,7 +1034,7 @@ export function SettingsDialog() {
                                     <Label>{t.settings?.tabs?.ai || "AI Provider"}</Label>
                                     <Select
                                         value={config.aiProvider}
-                                        onValueChange={(val: 'gemini' | 'openai' | 'azure') => setConfig(prev => ({ ...prev, aiProvider: val }))}
+                                        onValueChange={(val: 'gemini' | 'openai' | 'azure' | 'custom') => setConfig(prev => ({ ...prev, aiProvider: val }))}
                                     >
                                         <SelectTrigger>
                                             <SelectValue />
@@ -917,6 +1043,7 @@ export function SettingsDialog() {
                                             <SelectItem value="gemini">Google Gemini</SelectItem>
                                             <SelectItem value="openai">OpenAI / Compatible</SelectItem>
                                             <SelectItem value="azure">Azure OpenAI</SelectItem>
+                                            <SelectItem value="custom">通用第三方大模型</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -1038,6 +1165,38 @@ export function SettingsDialog() {
                                                     currentModel={getSelectedInstance()?.model}
                                                     onModelChange={(model) => updateOpenAIInstance('model', model)}
                                                 />
+                                                <div className="space-y-2">
+                                                    <Label>计费费率（按 1M Token 计算, 单位: 元/刀）</Label>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输入 (缓存命中)</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedInstance()?.rates?.inputCacheHit ?? ''}
+                                                                onChange={(e) => updateOpenAIInstance('rates', { ...getSelectedInstance()?.rates, inputCacheHit: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 1.0"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输入 (缓存未命中)</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedInstance()?.rates?.inputCacheMiss ?? ''}
+                                                                onChange={(e) => updateOpenAIInstance('rates', { ...getSelectedInstance()?.rates, inputCacheMiss: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 2.0"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输出</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedInstance()?.rates?.output ?? ''}
+                                                                onChange={(e) => updateOpenAIInstance('rates', { ...getSelectedInstance()?.rates, output: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 5.0"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -1085,6 +1244,38 @@ export function SettingsDialog() {
                                             currentModel={config.gemini?.model}
                                             onModelChange={(model) => updateConfig('gemini', 'model', model)}
                                         />
+                                        <div className="space-y-2">
+                                            <Label>计费费率（按 1M Token 计算, 单位: 元/刀）</Label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输入 (缓存命中)</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.gemini?.rates?.inputCacheHit ?? ''}
+                                                        onChange={(e) => updateConfig('gemini', 'rates', { ...config.gemini?.rates, inputCacheHit: parseFloat(e.target.value) || 0 })}
+                                                        placeholder="例如: 1.0"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输入 (缓存未命中)</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.gemini?.rates?.inputCacheMiss ?? ''}
+                                                        onChange={(e) => updateConfig('gemini', 'rates', { ...config.gemini?.rates, inputCacheMiss: parseFloat(e.target.value) || 0 })}
+                                                        placeholder="例如: 2.0"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输出</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.gemini?.rates?.output ?? ''}
+                                                        onChange={(e) => updateConfig('gemini', 'rates', { ...config.gemini?.rates, output: parseFloat(e.target.value) || 0 })}
+                                                        placeholder="例如: 5.0"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
@@ -1149,8 +1340,197 @@ export function SettingsDialog() {
                                                 placeholder="gpt-4o"
                                             />
                                         </div>
+                                        <div className="space-y-2">
+                                            <Label>计费费率（按 1M Token 计算, 单位: 元/刀）</Label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输入 (缓存命中)</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.azure?.rates?.inputCacheHit ?? ''}
+                                                        onChange={(e) => setConfig(prev => ({ ...prev, azure: { ...prev.azure, rates: { ...prev.azure?.rates, inputCacheHit: parseFloat(e.target.value) || 0 } } }))}
+                                                        placeholder="例如: 1.0"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输入 (缓存未命中)</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.azure?.rates?.inputCacheMiss ?? ''}
+                                                        onChange={(e) => setConfig(prev => ({ ...prev, azure: { ...prev.azure, rates: { ...prev.azure?.rates, inputCacheMiss: parseFloat(e.target.value) || 0 } } }))}
+                                                        placeholder="例如: 2.0"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-xs text-muted-foreground">输出</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={config.azure?.rates?.output ?? ''}
+                                                        onChange={(e) => setConfig(prev => ({ ...prev, azure: { ...prev.azure, rates: { ...prev.azure?.rates, output: parseFloat(e.target.value) || 0 } } }))}
+                                                        placeholder="例如: 5.0"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
+
+                                {config.aiProvider === 'custom' && (
+                                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                        {/* Custom 实例选择器 */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label>{t.settings?.ai?.instances || "实例列表"}</Label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={addCustomInstance}
+                                                    disabled={(config.custom?.instances?.length || 0) >= MAX_CUSTOM_INSTANCES}
+                                                    className="h-7 px-2 text-xs"
+                                                >
+                                                    <Plus className="h-3 w-3 mr-1" />
+                                                    {t.settings?.ai?.addInstance || "添加"}
+                                                </Button>
+                                            </div>
+                                            {(config.custom?.instances?.length || 0) > 0 ? (
+                                                <div className="flex gap-2">
+                                                    <Select
+                                                        value={selectedCustomInstanceId || config.custom?.activeInstanceId || ''}
+                                                        onValueChange={setActiveCustomInstance}
+                                                    >
+                                                        <SelectTrigger className="flex-1">
+                                                            <SelectValue placeholder={t.settings?.ai?.selectInstance || "选择实例"} />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(config.custom?.instances || []).map((instance) => (
+                                                                <SelectItem key={instance.id} value={instance.id}>
+                                                                    {instance.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {(config.custom?.instances?.length || 0) > 1 && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={() => {
+                                                                const activeId = selectedCustomInstanceId || config.custom?.activeInstanceId;
+                                                                if (activeId && confirm(t.settings?.ai?.confirmDelete || '确定要删除此实例吗？')) {
+                                                                    deleteCustomInstance(activeId);
+                                                                }
+                                                            }}
+                                                            className="h-10 w-10 text-destructive hover:text-destructive"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">
+                                                    {t.settings?.ai?.noInstances || "未配置任何实例。点击 '添加' 来创建一个。"}
+                                                </p>
+                                            )}
+                                            {(config.custom?.instances?.length || 0) >= MAX_CUSTOM_INSTANCES && (
+                                                <p className="text-xs text-amber-600">
+                                                    {t.settings?.ai?.maxInstancesReached || "已达到最大实例数量 (10)"}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Custom 实例配置表单 */}
+                                        {getSelectedCustomInstance() && (
+                                            <div className="space-y-3 p-3 border rounded-md bg-background">
+                                                <div className="space-y-2">
+                                                    <Label>{t.settings?.ai?.instanceName || "实例名称"} <span className="text-destructive">*</span></Label>
+                                                    <Input
+                                                        value={getSelectedCustomInstance()?.name || ''}
+                                                        onChange={(e) => updateCustomInstance('name', e.target.value)}
+                                                        placeholder="例如: DeepSeek V4"
+                                                        className={!getSelectedCustomInstance()?.name?.trim() ? 'border-destructive' : ''}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>API Key <span className="text-destructive">*</span></Label>
+                                                    <div className="relative">
+                                                        <Input
+                                                            type={showApiKey ? "text" : "password"}
+                                                            value={getSelectedCustomInstance()?.apiKey || ''}
+                                                            onChange={(e) => updateCustomInstance('apiKey', e.target.value)}
+                                                            placeholder="sk-..."
+                                                            className={`pr-10 ${!getSelectedCustomInstance()?.apiKey?.trim() ? 'border-destructive' : ''}`}
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                                            onClick={() => setShowApiKey(!showApiKey)}
+                                                        >
+                                                            {showApiKey ? (
+                                                                <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                                            ) : (
+                                                                <Eye className="h-4 w-4 text-muted-foreground" />
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2 pt-4 border-t">
+                                                    <Label>Base URL <span className="text-destructive">*</span></Label>
+                                                    <Input
+                                                        value={getSelectedCustomInstance()?.baseUrl || ''}
+                                                        onChange={(e) => updateCustomInstance('baseUrl', e.target.value)}
+                                                        placeholder="例如: https://api.example.com/v1"
+                                                        className={!getSelectedCustomInstance()?.baseUrl?.trim() ? 'border-destructive' : ''}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>模型名称 (Model Name) <span className="text-destructive">*</span></Label>
+                                                    <Input
+                                                        value={getSelectedCustomInstance()?.model || ''}
+                                                        onChange={(e) => updateCustomInstance('model', e.target.value)}
+                                                        placeholder="例如: deepseek-chat"
+                                                        className={!getSelectedCustomInstance()?.model?.trim() ? 'border-destructive' : ''}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>计费费率（按 1M Token 计算, 单位: 元/刀）</Label>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输入 (缓存命中)</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedCustomInstance()?.rates?.inputCacheHit ?? ''}
+                                                                onChange={(e) => updateCustomInstance('rates', { ...getSelectedCustomInstance()?.rates, inputCacheHit: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 1.0"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输入 (缓存未命中)</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedCustomInstance()?.rates?.inputCacheMiss ?? ''}
+                                                                onChange={(e) => updateCustomInstance('rates', { ...getSelectedCustomInstance()?.rates, inputCacheMiss: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 2.0"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-xs text-muted-foreground">输出</span>
+                                                            <Input
+                                                                type="number"
+                                                                value={getSelectedCustomInstance()?.rates?.output ?? ''}
+                                                                onChange={(e) => updateCustomInstance('rates', { ...getSelectedCustomInstance()?.rates, output: parseFloat(e.target.value) || 0 })}
+                                                                placeholder="例如: 5.0"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                
                                 {/* 测试连接和保存按钮 */}
                                 <div className="space-y-3 pt-3 border-t">
                                     <div className="flex gap-2">

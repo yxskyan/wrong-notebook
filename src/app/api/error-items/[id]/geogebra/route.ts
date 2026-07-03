@@ -64,7 +64,7 @@ export async function POST(
             });
         }
 
-        const aiService = getAIService();
+        const aiService = getAIService(session?.user ? (session.user as any).id : undefined);
         const result = await aiService.analyzeForGeogebra(
             errorItem.questionText,
             errorItem.answerText || "",

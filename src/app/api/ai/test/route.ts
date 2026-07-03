@@ -70,7 +70,7 @@ function parseErrorCode(error: unknown): string {
 }
 
 export interface AITestRequest {
-    provider: 'openai' | 'gemini' | 'azure';
+    provider: 'openai' | 'gemini' | 'azure' | 'custom';
     apiKey: string;
     baseUrl?: string;
     model?: string;
@@ -123,10 +123,10 @@ export async function POST(request: NextRequest) {
         // 优化策略：先视觉测试，成功则一步完成；失败则根据错误类型决定是否进行文本测试
         // 测试 1: 视觉（多模态）能力
         try {
-            if (provider === 'openai') {
+            if (provider === 'openai' || provider === 'custom') {
                 const openai = new OpenAIProvider({ apiKey, baseUrl, model });
                 const result = await openai.analyzeImage(TEST_IMAGE_BASE64, TEST_IMAGE_MIME, language);
-                if (result.questionText || result.analysis) {
+                if (result.length > 0 && (result[0].questionText || result[0].analysis)) {
                     // 视觉成功 → 文本和视觉都支持，一步完成
                     textSupport = true;
                     visionSupport = true;
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
             } else if (provider === 'gemini') {
                 const gemini = new GeminiProvider({ apiKey, baseUrl, model });
                 const result = await gemini.analyzeImage(TEST_IMAGE_BASE64, TEST_IMAGE_MIME, language);
-                if (result.questionText || result.analysis) {
+                if (result.length > 0 && (result[0].questionText || result[0].analysis)) {
                     textSupport = true;
                     visionSupport = true;
                     modelInfo = model || 'gemini-2.0-flash';
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
                     model
                 });
                 const result = await azure.analyzeImage(TEST_IMAGE_BASE64, TEST_IMAGE_MIME, language);
-                if (result.questionText || result.analysis) {
+                if (result.length > 0 && (result[0].questionText || result[0].analysis)) {
                     textSupport = true;
                     visionSupport = true;
                     modelInfo = model || deploymentName;
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         // 测试 2: 文本生成能力（仅在视觉失败且非配置错误时进行）
         if (!textSupport && !textError) {
             try {
-                if (provider === 'openai') {
+                if (provider === 'openai' || provider === 'custom') {
                     const openai = new OpenAIProvider({ apiKey, baseUrl, model });
                     const result = await openai.generateSimilarQuestion(
                         '1+1=?',

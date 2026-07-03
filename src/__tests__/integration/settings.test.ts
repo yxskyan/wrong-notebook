@@ -32,7 +32,19 @@ const mocks = vi.hoisted(() => ({
     mockUpdateAppConfig: vi.fn((config: any) => ({
         ...config,
         aiProvider: config.aiProvider || 'gemini',
+        aiProvider: config.aiProvider || 'gemini',
     })),
+    mockGetServerSession: vi.fn(),
+}));
+
+// Mock next-auth
+vi.mock('next-auth', () => ({
+    getServerSession: mocks.mockGetServerSession,
+}));
+
+// Mock auth options
+vi.mock('@/lib/auth', () => ({
+    authOptions: {},
 }));
 
 // Mock config module
@@ -47,11 +59,14 @@ import { GET, POST } from '@/app/api/settings/route';
 describe('/api/settings', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.mockGetServerSession.mockResolvedValue({
+            user: { id: 'test-user-id', email: 'test@example.com' },
+        });
     });
 
     describe('GET /api/settings', () => {
         it('应该返回完整的应用配置', async () => {
-            const response = await GET();
+            const response = await GET(new Request('http://localhost/api/settings'));
             const data = await response.json();
 
             expect(response.status).toBe(200);
@@ -62,16 +77,16 @@ describe('/api/settings', () => {
         });
 
         it('应该返回 AI 提供商设置', async () => {
-            const response = await GET();
+            const response = await GET(new Request('http://localhost/api/settings'));
             const data = await response.json();
 
-            expect(data.openai.instances[0].apiKey).toBe('sk-test-key');
-            expect(data.gemini.apiKey).toBe('AIza-test-key');
+            expect(data.openai.instances[0].apiKey).toBe('********');
+            expect(data.gemini.apiKey).toBe('********');
             expect(data.gemini.model).toBe('gemini-2.5-flash');
         });
 
         it('应该返回注册开关状态', async () => {
-            const response = await GET();
+            const response = await GET(new Request('http://localhost/api/settings'));
             const data = await response.json();
 
             expect(data.allowRegistration).toBe(true);

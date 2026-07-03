@@ -69,7 +69,7 @@ describe('GeminiProvider Retry Logic', () => {
         const result = await provider.analyzeImage('base64data');
 
         expect(result).toBeDefined();
-        expect(result.questionText).toBe('Q');
+        expect(result[0].questionText).toBe('Q');
         // Initial call + 2 retries = 3 calls
         expect(mockGenerateContent).toHaveBeenCalledTimes(3);
     });

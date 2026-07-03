@@ -713,7 +713,7 @@ export const translations = {
             answerPlaceholder: "输入你的答案...",
             notesPlaceholder: "记录解题思路（可选）...",
             submitAnswer: "提交答案",
-            uploadImage: "拍照上传",
+            uploadImage: "附件上传",
             manualInput: "手动输入",
             textInputHint: "手动输入题目文本",
             textInputPlaceholder: "在此粘贴或输入题目文本...\n支持 Markdown 和 LaTeX 公式（如 $x^2 + y^2 = 1$）\n\nCtrl+Enter 快捷提交",

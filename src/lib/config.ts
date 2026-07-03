@@ -15,8 +15,17 @@ export interface OpenAIInstance {
     model: string;
 }
 
+// 通用第三方大模型实例配置
+export interface CustomAIInstance {
+    id: string;
+    name: string;
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+}
+
 export interface AppConfig {
-    aiProvider: 'gemini' | 'openai' | 'azure';
+    aiProvider: 'gemini' | 'openai' | 'azure' | 'custom';
     allowRegistration?: boolean;
     openai?: {
         instances?: OpenAIInstance[];
@@ -34,6 +43,10 @@ export interface AppConfig {
         apiVersion?: string;     // API 版本
         model?: string;          // 显示用模型名
     };
+    custom?: {
+        instances?: CustomAIInstance[];
+        activeInstanceId?: string;
+    };
     prompts?: {
         analyze?: string;
         similar?: string;
@@ -50,10 +63,23 @@ interface LegacyOpenAIConfig {
     model?: string;
 }
 
+// 旧版 Custom 配置格式（用于迁移检测）
+interface LegacyCustomConfig {
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+}
+
 // 检测是否为旧版配置格式
 function isLegacyOpenAIConfig(config: unknown): config is LegacyOpenAIConfig {
     if (!config || typeof config !== 'object') return false;
     // 旧版配置包含 apiKey 直接字段，而新版包含 instances 数组
+    return 'apiKey' in config && !('instances' in config);
+}
+
+// 检测是否为旧版 Custom 配置格式
+function isLegacyCustomConfig(config: unknown): config is LegacyCustomConfig {
+    if (!config || typeof config !== 'object') return false;
     return 'apiKey' in config && !('instances' in config);
 }
 
@@ -87,8 +113,28 @@ function migrateOpenAIConfig(legacy: LegacyOpenAIConfig): AppConfig['openai'] {
     };
 }
 
+// 迁移旧版 Custom 配置到新版多实例格式
+function migrateCustomConfig(legacy: LegacyCustomConfig): AppConfig['custom'] {
+    if (!legacy.apiKey) {
+        return { instances: [], activeInstanceId: undefined };
+    }
+
+    const defaultInstance: CustomAIInstance = {
+        id: generateId(),
+        name: 'Default (Custom)',
+        apiKey: legacy.apiKey,
+        baseUrl: legacy.baseUrl || '',
+        model: legacy.model || '',
+    };
+
+    return {
+        instances: [defaultInstance],
+        activeInstanceId: defaultInstance.id,
+    };
+}
+
 const DEFAULT_CONFIG: AppConfig = {
-    aiProvider: (process.env.AI_PROVIDER as 'gemini' | 'openai' | 'azure') || 'gemini',
+    aiProvider: (process.env.AI_PROVIDER as 'gemini' | 'openai' | 'azure' | 'custom') || 'gemini',
     allowRegistration: true,
     openai: {
         instances: process.env.OPENAI_API_KEY ? [{
@@ -111,6 +157,16 @@ const DEFAULT_CONFIG: AppConfig = {
         deploymentName: process.env.AZURE_OPENAI_DEPLOYMENT,
         apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-02-15-preview',
         model: process.env.AZURE_OPENAI_MODEL || 'gpt-4o',
+    },
+    custom: {
+        instances: process.env.CUSTOM_AI_API_KEY ? [{
+            id: 'env-default-custom',
+            name: 'Default (ENV)',
+            apiKey: process.env.CUSTOM_AI_API_KEY,
+            baseUrl: process.env.CUSTOM_AI_BASE_URL || '',
+            model: process.env.CUSTOM_AI_MODEL || '',
+        }] : [],
+        activeInstanceId: process.env.CUSTOM_AI_API_KEY ? 'env-default-custom' : undefined,
     },
     prompts: {
         analyze: '',
@@ -139,6 +195,21 @@ export function getAppConfig(): AppConfig {
                 };
                 fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(migratedConfig, null, 2));
                 logger.info('Legacy OpenAI config migrated successfully');
+                Object.assign(userConfig, migratedConfig);
+            }
+
+            // 检测并迁移旧版 Custom 配置
+            let customConfig = userConfig.custom;
+            if (isLegacyCustomConfig(userConfig.custom)) {
+                logger.info('Detected legacy Custom config, migrating to multi-instance format...');
+                customConfig = migrateCustomConfig(userConfig.custom);
+                const migratedConfig = {
+                    ...userConfig,
+                    custom: customConfig,
+                };
+                fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(migratedConfig, null, 2));
+                logger.info('Legacy Custom config migrated successfully');
+                Object.assign(userConfig, migratedConfig);
             }
 
             // Merge with default to ensure all fields exist
@@ -151,6 +222,10 @@ export function getAppConfig(): AppConfig {
                 },
                 gemini: { ...DEFAULT_CONFIG.gemini, ...userConfig.gemini },
                 azure: { ...DEFAULT_CONFIG.azure, ...userConfig.azure },
+                custom: {
+                    instances: customConfig?.instances || DEFAULT_CONFIG.custom?.instances || [],
+                    activeInstanceId: customConfig?.activeInstanceId || DEFAULT_CONFIG.custom?.activeInstanceId,
+                },
                 prompts: { ...DEFAULT_CONFIG.prompts, ...userConfig.prompts },
                 timeouts: { ...DEFAULT_CONFIG.timeouts, ...userConfig.timeouts },
             };
@@ -173,6 +248,10 @@ export function updateAppConfig(newConfig: Partial<AppConfig>) {
         },
         gemini: { ...currentConfig.gemini, ...newConfig.gemini },
         azure: { ...currentConfig.azure, ...newConfig.azure },
+        custom: {
+            instances: newConfig.custom?.instances ?? currentConfig.custom?.instances ?? [],
+            activeInstanceId: newConfig.custom?.activeInstanceId ?? currentConfig.custom?.activeInstanceId,
+        },
         prompts: { ...currentConfig.prompts, ...newConfig.prompts },
         timeouts: { ...currentConfig.timeouts, ...newConfig.timeouts },
     };
@@ -199,6 +278,20 @@ export function getActiveOpenAIConfig(): OpenAIInstance | undefined {
     return instances.find(i => i.id === activeId);
 }
 
+// 获取当前激活的 Custom 实例配置
+export function getActiveCustomConfig(): CustomAIInstance | undefined {
+    const config = getAppConfig();
+    const instances = config.custom?.instances || [];
+    const activeId = config.custom?.activeInstanceId;
+
+    if (!activeId || instances.length === 0) {
+        return undefined;
+    }
+
+    return instances.find(i => i.id === activeId);
+}
+
 // 最大实例数限制
 export const MAX_OPENAI_INSTANCES = 10;
+export const MAX_CUSTOM_INSTANCES = 10;
 

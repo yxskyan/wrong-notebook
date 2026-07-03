@@ -537,7 +537,14 @@ describe('/api/error-items', () => {
             expect(mocks.mockPrismaErrorItem.findMany).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: expect.objectContaining({
-                        knowledgePoints: { contains: '一元一次方程' },
+                        AND: [
+                            {
+                                OR: [
+                                    { knowledgePoints: { contains: '一元一次方程' } },
+                                    { tags: { some: { name: '一元一次方程' } } }
+                                ]
+                            }
+                        ]
                     }),
                 })
             );

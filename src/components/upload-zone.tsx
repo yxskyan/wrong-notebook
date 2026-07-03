@@ -52,6 +52,7 @@ export function UploadZone({ onImageSelect, isAnalyzing }: UploadZoneProps) {
         onDrop,
         accept: {
             "image/*": [".jpeg", ".jpg", ".png"],
+            "application/pdf": [".pdf"],
         },
         maxFiles: 1,
         disabled: isAnalyzing,
@@ -201,7 +202,7 @@ export function UploadZone({ onImageSelect, isAnalyzing }: UploadZoneProps) {
                             {isAnalyzing ? t.app.analyzing : t.app.dragDrop}
                         </p>
                         <p className="text-xs text-muted-foreground mt-2">
-                            {t.upload.support}
+                            支持的格式：JPEG, PNG, PDF
                         </p>
                     </div>
                 </CardContent>

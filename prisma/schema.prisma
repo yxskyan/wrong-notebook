@@ -29,7 +29,22 @@ model User {
   subjects   Subject[]
   practiceRecords PracticeRecord[]
   customTags KnowledgeTag[] // User's custom tags
+  tokenUsages TokenUsage[]
 }
+
+model TokenUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  model     String
+  promptTokens      Int      @default(0)
+  completionTokens  Int      @default(0)
+  totalTokens       Int      @default(0)
+  cost              Float    @default(0) // Used cost in USD or CNY, based on configured rate
+  createdAt DateTime @default(now())
+}
+
 
 // 统一知识点标签表 (支持无限层级)
 model KnowledgeTag {

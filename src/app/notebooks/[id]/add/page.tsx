@@ -16,14 +16,16 @@ import { ArrowLeft, Upload, PenLine } from "lucide-react";
 import { ProgressFeedback, ProgressStatus } from "@/components/ui/progress-feedback";
 import { frontendLogger } from "@/lib/frontend-logger";
 import { TextInputZone } from "@/components/text-input-zone";
+import { MultiQuestionSelector } from "@/components/multi-question-selector";
 
 export default function AddErrorPage() {
     const params = useParams();
     const router = useRouter();
     const notebookId = params.id as string;
-    const [step, setStep] = useState<"upload" | "review">("upload");
+    const [step, setStep] = useState<"upload" | "select" | "review">("upload");
     const [analysisStep, setAnalysisStep] = useState<ProgressStatus>('idle');
     const [progress, setProgress] = useState(0);
+    const [parsedDataList, setParsedDataList] = useState<ParsedQuestion[]>([]);
     const [parsedData, setParsedData] = useState<ParsedQuestion | null>(null);
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const { t, language } = useLanguage();
@@ -98,9 +100,13 @@ export default function AddErrorPage() {
     }, [analysisStep, safetyTimeout]);
 
     const onImageSelect = (file: File) => {
-        const imageUrl = URL.createObjectURL(file);
-        setCroppingImage(imageUrl);
-        setIsCropperOpen(true);
+        if (file.type === 'application/pdf') {
+            handleAnalyze(file);
+        } else {
+            const imageUrl = URL.createObjectURL(file);
+            setCroppingImage(imageUrl);
+            setIsCropperOpen(true);
+        }
     };
 
     const handleCropComplete = async (croppedBlob: Blob) => {
@@ -119,19 +125,42 @@ export default function AddErrorPage() {
         });
 
         try {
-            frontendLogger.info('[AddAnalyze]', 'Step 1/5: Compressing image');
-            setAnalysisStep('compressing');
-            const base64Image = await processImageFile(file);
-            setCurrentImage(base64Image);
-            frontendLogger.info('[AddAnalyze]', 'Image compressed successfully', {
-                size: base64Image.length
-            });
+            let base64Image = "";
+            let mimeType = file.type;
 
-            frontendLogger.info('[AddAnalyze]', 'Step 2/5: Calling API endpoint /api/analyze');
+            let fileUrl = "";
+
+            if (file.type === 'application/pdf') {
+                frontendLogger.info('[AddAnalyze]', 'Step 1/6: Reading PDF file');
+                setAnalysisStep('compressing');
+                const reader = new FileReader();
+                base64Image = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            } else {
+                frontendLogger.info('[AddAnalyze]', 'Step 1/6: Compressing image');
+                setAnalysisStep('compressing');
+                base64Image = await processImageFile(file);
+            }
+
+            frontendLogger.info('[AddAnalyze]', 'Step 2/6: Uploading file to server');
+            const uploadStartTime = Date.now();
+            const uploadRes = await apiClient.post<{ url: string }>("/api/upload", {
+                imageBase64: base64Image,
+                mimeType
+            });
+            fileUrl = uploadRes.url;
+            setCurrentImage(fileUrl);
+            frontendLogger.info('[AddAnalyze]', `File uploaded successfully in ${Date.now() - uploadStartTime}ms`, { fileUrl });
+
+            frontendLogger.info('[AddAnalyze]', 'Step 3/6: Calling API endpoint /api/analyze');
             setAnalysisStep('analyzing');
             const apiStartTime = Date.now();
             const data = await apiClient.post<AnalyzeResponse>("/api/analyze", {
-                imageBase64: base64Image,
+                fileUrl,
+                mimeType,
                 language: language,
                 subjectId: notebookId
             }, { timeout: aiTimeout }); // Use configured timeout
@@ -157,20 +186,19 @@ export default function AddErrorPage() {
             frontendLogger.info('[AddAnalyze]', 'Step 4/5: Setting parsed data into state');
             const dataSize = JSON.stringify(data).length;
             const setDataStart = Date.now();
-            setParsedData(data);
+            setParsedDataList(data);
+            if (data.length === 1) {
+                setParsedData(data[0]);
+                setStep("review");
+            } else {
+                setStep("select");
+            }
             const setDataDuration = Date.now() - setDataStart;
             frontendLogger.info('[AddAnalyze]', 'Parsed data set successfully', {
                 dataSize,
                 setDataDuration
             });
 
-            frontendLogger.info('[AddAnalyze]', 'Step 5/5: Switching to review page');
-            const setStepStart = Date.now();
-            setStep("review");
-            const setStepDuration = Date.now() - setStepStart;
-            frontendLogger.info('[AddAnalyze]', 'Step switched to review', {
-                setStepDuration
-            });
             const totalDuration = Date.now() - startTime;
             frontendLogger.info('[AddAnalyze]', 'Analysis completed successfully', {
                 totalDuration
@@ -326,6 +354,37 @@ export default function AddErrorPage() {
         }
     };
 
+    const handleSaveSelected = async (selectedIndices: number[]) => {
+        try {
+            const selectedQuestions = selectedIndices.map(i => parsedDataList[i]);
+            const targetNotebookId = notebookId;
+
+            // Save all selected sequentially
+            for (const q of selectedQuestions) {
+                await apiClient.post("/api/error-items", {
+                    ...q,
+                    originalImageUrl: currentImage,
+                    subjectId: targetNotebookId,
+                });
+            }
+
+            alert(`成功保存 ${selectedQuestions.length} 道题目`);
+            setStep("upload");
+            setCurrentImage(null);
+            setParsedDataList([]);
+            setParsedData(null);
+            router.push(`/notebooks/${notebookId}`);
+        } catch (error) {
+            console.error("Failed to save selected questions:", error);
+            alert("保存失败，请重试");
+        }
+    };
+
+    const handleEditQuestion = (index: number) => {
+        setParsedData(parsedDataList[index]);
+        setStep("review");
+    };
+
     const getProgressMessage = () => {
         switch (analysisStep) {
             case 'compressing': return t.common.progress?.compressing || "Compressing...";
@@ -377,7 +436,7 @@ export default function AddErrorPage() {
                                 onClick={() => setInputMode("image")}
                             >
                                 <Upload className="h-4 w-4" />
-                                {t.app?.uploadImage || "拍照上传"}
+                                {t.app?.uploadImage || "附件上传"}
                             </button>
                             <button
                                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -401,6 +460,22 @@ export default function AddErrorPage() {
                                 defaultNotebookName={notebook?.name}
                             />
                         )}
+                    </div>
+                )}
+                
+                {step === "select" && (
+                    <div className="py-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <MultiQuestionSelector
+                            questions={parsedDataList}
+                            onSaveSelected={handleSaveSelected}
+                            onEdit={handleEditQuestion}
+                            onCancel={() => {
+                                setStep("upload");
+                                setParsedDataList([]);
+                                setParsedData(null);
+                                setCurrentImage(null);
+                            }}
+                        />
                     </div>
                 )}
 

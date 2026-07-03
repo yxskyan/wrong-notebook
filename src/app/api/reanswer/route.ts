@@ -35,7 +35,8 @@ export async function POST(req: Request) {
             return badRequest("Missing question text");
         }
 
-        const aiService = getAIService();
+        // 初始化 AI 服务
+        const aiService = getAIService((session.user as any).id);
 
         // 根据是否有图片选择不同的重新解题方式
         const result = await aiService.reanswerQuestion(questionText, language, subject, imageBase64, gradeSemester);

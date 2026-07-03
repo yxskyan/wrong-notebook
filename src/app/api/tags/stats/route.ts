@@ -6,6 +6,9 @@ const logger = createLogger('api:tags:stats');
 
 export const dynamic = "force-dynamic";
 
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+
 
 /**
  * GET /api/tags/stats
@@ -13,10 +16,23 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
     try {
-        // 获取所有错题的知识点
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(req.url);
+        const subjectId = searchParams.get('subjectId');
+
+        // 获取当前用户的所有错题（可选按科目过滤）的知识点和关联标签
         const errorItems = await prisma.errorItem.findMany({
+            where: {
+                userId: session.user.id,
+                ...(subjectId ? { subjectId } : {})
+            },
             select: {
                 knowledgePoints: true,
+                tags: { select: { name: true } }
             },
         });
 
@@ -37,6 +53,11 @@ export async function GET(req: Request) {
                 } catch (e) {
                     logger.warn({ knowledgePoints: item.knowledgePoints }, 'Failed to parse knowledgePoints for item');
                 }
+            }
+            if (item.tags && item.tags.length > 0) {
+                item.tags.forEach((tag) => {
+                    tagStats[tag.name] = (tagStats[tag.name] || 0) + 1;
+                });
             }
         });
 

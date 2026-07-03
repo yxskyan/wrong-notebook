@@ -8,6 +8,9 @@ import { prisma } from "@/lib/prisma";
 import { badRequest, internalError, createErrorResponse, ErrorCode } from "@/lib/api-errors";
 import { createLogger } from "@/lib/logger";
 
+import { readFile } from "fs/promises";
+import { join } from "path";
+
 const logger = createLogger('api:analyze');
 
 export async function POST(req: Request) {
@@ -23,22 +26,36 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json();
-        let { imageBase64, mimeType, language, subjectId } = body;
+        let { imageBase64, mimeType, language, subjectId, fileUrl } = body;
 
         logger.debug({
             imageLength: imageBase64?.length,
+            fileUrl,
             mimeType,
             language,
             subjectId
         }, 'Request received');
 
-        if (!imageBase64) {
+        if (!imageBase64 && !fileUrl) {
             logger.warn('Missing image data');
             return badRequest("Missing image data");
         }
 
-        // Parse Data URL if present
-        if (imageBase64.startsWith('data:')) {
+        // 如果传了 fileUrl (如 /uploads/xxx.jpg)，从本地读取文件
+        if (fileUrl && fileUrl.startsWith('/uploads/')) {
+            const publicDir = join(process.cwd(), 'public');
+            const filepath = join(publicDir, fileUrl);
+            try {
+                const buffer = await readFile(filepath);
+                imageBase64 = buffer.toString('base64');
+                mimeType = fileUrl.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+                logger.debug({ fileUrl, size: buffer.length }, 'Loaded file from disk');
+            } catch (err) {
+                logger.error({ err, fileUrl }, 'Failed to read file from disk');
+                return badRequest("Invalid file URL");
+            }
+        } else if (imageBase64 && imageBase64.startsWith('data:')) {
+            // Parse Data URL if present
             const matches = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
             if (matches) {
                 mimeType = matches[1];
@@ -102,18 +119,17 @@ export async function POST(req: Request) {
         const subjectChinese = subjectName ? subjectNameMapping[subjectName] : null;
 
         logger.info({ userGrade, userGradeSemester, subject: subjectChinese }, 'Calling AI service for image analysis');
-        const aiService = getAIService();
+        const aiService = getAIService((session.user as any).id);
         const analysisResult = await aiService.analyzeImage(imageBase64, mimeType, language, userGrade, subjectChinese, userGradeSemester);
 
         logger.debug({
-            knowledgePointsCount: analysisResult.knowledgePoints?.length,
-            knowledgePointsType: typeof analysisResult.knowledgePoints,
-            isArray: Array.isArray(analysisResult.knowledgePoints)
-        }, 'AI returned knowledge points');
+            questionsCount: analysisResult.length,
+            isArray: Array.isArray(analysisResult)
+        }, 'AI returned parsed questions array');
 
         // AI 现在从数据库获取标签列表，返回的标签已经是标准化的，不需要额外处理
-        if (!analysisResult.knowledgePoints || analysisResult.knowledgePoints.length === 0) {
-            logger.warn('Knowledge points is empty or null');
+        if (!analysisResult || analysisResult.length === 0) {
+            logger.warn('Analysis result is empty or null');
         }
 
         logger.info('AI analysis successful');

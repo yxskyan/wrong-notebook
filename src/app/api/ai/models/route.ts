@@ -65,12 +65,10 @@ async function fetchOpenAIModels(apiKey: string, baseUrl: string): Promise<Model
         }));
 }
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
     try {
-        const { searchParams } = new URL(req.url);
-        const provider = searchParams.get('provider');
-        const apiKey = searchParams.get('apiKey');
-        const baseUrl = searchParams.get('baseUrl');
+        const body = await req.json();
+        const { provider, apiKey, baseUrl } = body;
 
         if (!apiKey) {
             return NextResponse.json(

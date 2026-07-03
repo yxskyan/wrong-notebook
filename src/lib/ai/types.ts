@@ -1,6 +1,7 @@
 // Re-export the Zod-validated type from schema.ts
 export type { ParsedQuestionFromSchema as ParsedQuestion } from './schema';
 import type { ParsedQuestionFromSchema } from './schema';
+import type { TokenRates } from '@/types/api';
 
 // Import and re-export MistakeStatus from the single source of truth
 import type { MistakeStatus } from '../mistake-status';
@@ -24,7 +25,7 @@ export interface GeogebraAnalysisResult {
 }
 
 export interface AIService {
-    analyzeImage(imageBase64: string, mimeType?: string, language?: 'zh' | 'en', grade?: 7 | 8 | 9 | 10 | 11 | 12 | null, subject?: string | null, gradeSemester?: string | null): Promise<ParsedQuestionFromSchema>;
+    analyzeImage(imageBase64: string, mimeType?: string, language?: 'zh' | 'en', grade?: 7 | 8 | 9 | 10 | 11 | 12 | null, subject?: string | null, gradeSemester?: string | null): Promise<ParsedQuestionFromSchema[]>;
     generateSimilarQuestion(originalQuestion: string, knowledgePoints: string[], language?: 'zh' | 'en', difficulty?: DifficultyLevel, gradeSemester?: string | null): Promise<ParsedQuestionFromSchema>;
     reanswerQuestion(questionText: string, language?: 'zh' | 'en', subject?: string | null, imageBase64?: string, gradeSemester?: string | null): Promise<ReanswerQuestionResult>;
     analyzeForGeogebra(questionText: string, answerText: string, analysis: string): Promise<GeogebraAnalysisResult>;
@@ -37,4 +38,8 @@ export interface AIConfig {
     // Azure OpenAI 特有字段
     azureDeployment?: string;   // Azure 部署名称
     azureApiVersion?: string;   // API 版本 (如 2024-02-15-preview)
+    pricePerMillionTokens?: number;
+    rates?: TokenRates;
+    providerName?: string;
+    userId?: string;
 }

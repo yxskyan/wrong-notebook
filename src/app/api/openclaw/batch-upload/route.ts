@@ -6,6 +6,9 @@ import { calculateGrade } from "@/lib/grade-calculator";
 import { inferSubjectFromName } from "@/lib/knowledge-tags";
 import { findParentTagIdForGrade } from "@/lib/tag-recognition";
 import { compare } from "bcryptjs";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
+import { randomUUID } from "crypto";
 
 const logger = createLogger('api:openclaw:batch-upload');
 
@@ -164,11 +167,34 @@ async function createErrorItem(
         }
     }
 
+    // Save image to local filesystem instead of embedding Base64 in DB
+    let imageUrl = '';
+    if (imageBase64) {
+        try {
+            const buffer = Buffer.from(imageBase64, 'base64');
+            const extension = mimeType === 'application/pdf' ? 'pdf' : 'jpg';
+            const now = new Date();
+            const year = now.getFullYear().toString();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const filename = `${randomUUID()}.${extension}`;
+            const relativePath = `/uploads/${year}/${month}/${filename}`;
+
+            const publicDir = join(process.cwd(), 'public');
+            const uploadDir = join(publicDir, 'uploads', year, month);
+            await mkdir(uploadDir, { recursive: true });
+            await writeFile(join(uploadDir, filename), buffer);
+            imageUrl = relativePath;
+            logger.info({ filename, size: buffer.length }, 'Openclaw image saved to disk');
+        } catch (fsError) {
+            logger.error({ error: fsError }, 'Failed to save openclaw image to disk');
+        }
+    }
+
     const errorItem = await prisma.errorItem.create({
         data: {
             userId: userId,
             subjectId: subjectId || undefined,
-            originalImageUrl: `data:${mimeType};base64,${imageBase64}`,
+            originalImageUrl: imageUrl,
             ocrText: questionText || null,
             questionText: questionText || null,
             answerText: answerText || null,

@@ -34,7 +34,7 @@ export async function POST(req: Request) {
             tags = [];
         }
 
-        const aiService = getAIService();
+        const aiService = getAIService((session.user as any).id);
         const similarQuestion = await aiService.generateSimilarQuestion(
             errorItemWithSubject.questionText || "",
             tags,

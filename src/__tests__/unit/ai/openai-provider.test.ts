@@ -85,7 +85,7 @@ describe('OpenAI Provider 响应解析', () => {
 <requires_image>true</requires_image>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.questionText).toBe('求函数 f(x) = x^2 的最小值');
             expect(result.answerText).toBe('最小值为 0');
@@ -106,7 +106,7 @@ describe('OpenAI Provider 响应解析', () => {
 <mistake_analysis>移项后没有正确处理常数项。</mistake_analysis>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.wrongAnswerText).toBe('x = 4');
             expect(result.mistakeStatus).toBe('wrong_attempt');
@@ -120,7 +120,7 @@ describe('OpenAI Provider 响应解析', () => {
 <analysis>测试解析</analysis>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.wrongAnswerText).toBe('');
             expect(result.mistakeAnalysis).toBe('');
@@ -136,7 +136,7 @@ describe('OpenAI Provider 响应解析', () => {
 <mistake_status>unknown</mistake_status>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.wrongAnswerText).toBe('错误解答');
             expect(result.mistakeStatus).toBe('wrong_attempt');
@@ -148,7 +148,7 @@ describe('OpenAI Provider 响应解析', () => {
 <answer_text>测试答案</answer_text>
             `.trim();
 
-            expect(() => asPrivateProvider(provider).parseResponse(mockResponse)).toThrow('Missing critical XML tags');
+            expect(() => asPrivateProvider(provider).parseResponse(mockResponse)).toThrow('Invalid AI response: Could not parse any valid questions');
         });
     });
 });

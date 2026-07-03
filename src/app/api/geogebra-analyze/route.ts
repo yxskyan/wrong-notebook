@@ -30,7 +30,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const aiService = getAIService();
+        const aiService = getAIService((session.user as any).id);
         const result = await aiService.analyzeForGeogebra(
             questionText,
             answerText || "",

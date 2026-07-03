@@ -12,6 +12,13 @@ import { format } from "date-fns";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useRouter } from "next/navigation";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -47,6 +54,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
     const [gradeFilter, setGradeFilter] = useState("");
     const [chapterFilter, setChapterFilter] = useState("");
     const [paperLevelFilter, setPaperLevelFilter] = useState<"all" | "a" | "b" | "other">("all");
+    const [mistakeStatusFilter, setMistakeStatusFilter] = useState<"all" | "not_attempted" | "wrong_attempt" | "unknown">("all");
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
     // 分页状态
@@ -58,6 +66,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
     const [isSelectMode, setIsSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isDeleting, setIsDeleting] = useState(false);
+    const [customTags, setCustomTags] = useState<string[]>([]);
     const { t, language } = useLanguage();
     const router = useRouter();
 
@@ -77,6 +86,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
         if (gradeFilter) params.append("gradeSemester", gradeFilter);
         if (chapterFilter) params.append("chapter", chapterFilter); // 章节筛选
         if (paperLevelFilter !== "all") params.append("paperLevel", paperLevelFilter);
+        if (mistakeStatusFilter !== "all") params.append("mistakeStatus", mistakeStatusFilter);
 
         router.push(`/print-preview?${params.toString()}`);
     };
@@ -168,7 +178,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
     };
 
     // 追踪筛选条件是否变化（用于判断是否需要重置页码）
-    const prevFiltersRef = useRef({ search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter });
+    const prevFiltersRef = useRef({ search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter, mistakeStatusFilter });
 
     useEffect(() => {
         const prevFilters = prevFiltersRef.current;
@@ -180,10 +190,11 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
             prevFilters.subjectId !== subjectId ||
             prevFilters.gradeFilter !== gradeFilter ||
             prevFilters.chapterFilter !== chapterFilter ||
-            prevFilters.paperLevelFilter !== paperLevelFilter;
+            prevFilters.paperLevelFilter !== paperLevelFilter ||
+            prevFilters.mistakeStatusFilter !== mistakeStatusFilter;
 
         // 更新 ref
-        prevFiltersRef.current = { search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter };
+        prevFiltersRef.current = { search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter, mistakeStatusFilter };
 
         if (filtersChanged && page !== 1) {
             // 筛选条件变化且不在第一页，重置到第一页（会再次触发此 effect）
@@ -193,7 +204,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
 
         // 正常请求数据
         fetchItems();
-    }, [page, search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter]);
+    }, [page, search, masteryFilter, timeFilter, selectedTag, subjectId, gradeFilter, chapterFilter, paperLevelFilter, mistakeStatusFilter]);
 
     const fetchItems = async () => {
         setLoading(true);
@@ -213,6 +224,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
             if (gradeFilter) params.append("gradeSemester", gradeFilter);
             if (chapterFilter) params.append("chapter", chapterFilter); // 章节筛选
             if (paperLevelFilter !== "all") params.append("paperLevel", paperLevelFilter);
+            if (mistakeStatusFilter !== "all") params.append("mistakeStatus", mistakeStatusFilter);
             // 分页参数
             params.append("page", page.toString());
             params.append("pageSize", pageSize.toString());
@@ -227,6 +239,22 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        const fetchCustomTags = async () => {
+            try {
+                const params = new URLSearchParams();
+                if (subjectId) params.append("subjectId", subjectId);
+                const response = await apiClient.get<{ stats: { tag: string; count: number }[] }>(`/api/tags/stats?${params.toString()}`);
+                if (response.stats) {
+                    setCustomTags(response.stats.map(s => s.tag));
+                }
+            } catch (error) {
+                console.error("Failed to fetch custom tags:", error);
+            }
+        };
+        fetchCustomTags();
+    }, [subjectId]);
 
     return (
         <div className="space-y-6">
@@ -297,7 +325,35 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
                         subjectName={subjectName}
                     />
                 </div>
-                <div className="flex flex-wrap gap-2">
+                {customTags.length > 0 && (
+                    <div className="w-full sm:w-auto ml-2">
+                        <Select value={selectedTag || "all"} onValueChange={(val) => setSelectedTag(val === "all" ? null : val)}>
+                            <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="自定义标签" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">所有标签</SelectItem>
+                                {customTags.map(tag => (
+                                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+                <div className="w-full sm:w-auto ml-2">
+                    <Select value={mistakeStatusFilter} onValueChange={(val: any) => setMistakeStatusFilter(val)}>
+                        <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder={t.editor?.mistakeStatus || "作答状态"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">{t.filter?.all || "所有作答状态"}</SelectItem>
+                            <SelectItem value="not_attempted">{t.editor?.mistakeStatuses?.notAttempted || "不会做"}</SelectItem>
+                            <SelectItem value="wrong_attempt">{t.editor?.mistakeStatuses?.wrongAttempt || "做错了"}</SelectItem>
+                            <SelectItem value="unknown">{t.editor?.mistakeStatuses?.unknown || "未判断"}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="flex flex-wrap gap-2 ml-2">
                     <Button
                         variant={paperLevelFilter === "all" ? "secondary" : "outline"}
                         size="sm"

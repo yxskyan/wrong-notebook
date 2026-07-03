@@ -22,11 +22,13 @@ import { ProgressFeedback, ProgressStatus } from "@/components/ui/progress-feedb
 import { frontendLogger } from "@/lib/frontend-logger";
 import { TextInputZone } from "@/components/text-input-zone";
 import { DirectTextEditor } from "@/components/direct-text-editor";
+import { MultiQuestionSelector } from "@/components/multi-question-selector";
 
 function HomeContent() {
-    const [step, setStep] = useState<"upload" | "review">("upload");
+    const [step, setStep] = useState<"upload" | "select" | "review">("upload");
     const [analysisStep, setAnalysisStep] = useState<ProgressStatus>('idle');
     const [progress, setProgress] = useState(0);
+    const [parsedDataList, setParsedDataList] = useState<ParsedQuestion[]>([]);
     const [parsedData, setParsedData] = useState<ParsedQuestion | null>(null);
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const { t, language } = useLanguage();
@@ -103,9 +105,13 @@ function HomeContent() {
     }, [analysisStep, safetyTimeout]);
 
     const onImageSelect = (file: File) => {
-        const imageUrl = URL.createObjectURL(file);
-        setCroppingImage(imageUrl);
-        setIsCropperOpen(true);
+        if (file.type === 'application/pdf') {
+            handleAnalyze(file);
+        } else {
+            const imageUrl = URL.createObjectURL(file);
+            setCroppingImage(imageUrl);
+            setIsCropperOpen(true);
+        }
     };
 
     const handleCropComplete = async (croppedBlob: Blob) => {
@@ -125,19 +131,42 @@ function HomeContent() {
         });
 
         try {
-            frontendLogger.info('[HomeAnalyze]', 'Step 1/5: Compressing image');
-            setAnalysisStep('compressing');
-            const base64Image = await processImageFile(file);
-            setCurrentImage(base64Image);
-            frontendLogger.info('[HomeAnalyze]', 'Image compressed successfully', {
-                size: base64Image.length
-            });
+            let base64Image = "";
+            let mimeType = file.type;
 
-            frontendLogger.info('[HomeAnalyze]', 'Step 2/5: Calling API endpoint /api/analyze');
+            let fileUrl = "";
+
+            if (file.type === 'application/pdf') {
+                frontendLogger.info('[HomeAnalyze]', 'Step 1/6: Reading PDF file');
+                setAnalysisStep('compressing');
+                const reader = new FileReader();
+                base64Image = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            } else {
+                frontendLogger.info('[HomeAnalyze]', 'Step 1/6: Compressing image');
+                setAnalysisStep('compressing');
+                base64Image = await processImageFile(file);
+            }
+
+            frontendLogger.info('[HomeAnalyze]', 'Step 2/6: Uploading file to server');
+            const uploadStartTime = Date.now();
+            const uploadRes = await apiClient.post<{ url: string }>("/api/upload", {
+                imageBase64: base64Image,
+                mimeType
+            });
+            fileUrl = uploadRes.url;
+            setCurrentImage(fileUrl);
+            frontendLogger.info('[HomeAnalyze]', `File uploaded successfully in ${Date.now() - uploadStartTime}ms`, { fileUrl });
+
+            frontendLogger.info('[HomeAnalyze]', 'Step 3/6: Calling API endpoint /api/analyze');
             setAnalysisStep('analyzing');
             const apiStartTime = Date.now();
             const data = await apiClient.post<AnalyzeResponse>("/api/analyze", {
-                imageBase64: base64Image,
+                fileUrl,
+                mimeType,
                 language: language,
                 subjectId: initialNotebookId || autoSelectedNotebookId || undefined
             }, { timeout: aiTimeout }); // Use configured timeout
@@ -162,34 +191,34 @@ function HomeContent() {
 
             frontendLogger.info('[HomeAnalyze]', 'Step 4/5: Setting parsed data and auto-selecting notebook');
             const dataSize = JSON.stringify(data).length;
-            // Auto-select notebook based on subject
-            if (data.subject) {
+            // Auto-select notebook based on subject (using first item's subject if multiple)
+            const firstSubject = data.length > 0 ? data[0].subject : null;
+            if (firstSubject) {
                 const matchedNotebook = notebooks.find(n =>
-                    n.name.includes(data.subject!) || data.subject!.includes(n.name)
+                    n.name.includes(firstSubject) || firstSubject.includes(n.name)
                 );
                 if (matchedNotebook) {
                     setAutoSelectedNotebookId(matchedNotebook.id);
                     frontendLogger.info('[HomeAnalyze]', 'Auto-selected notebook', {
                         notebook: matchedNotebook.name,
-                        subject: data.subject
+                        subject: firstSubject
                     });
                 }
             }
             const setDataStart = Date.now();
-            setParsedData(data);
+            setParsedDataList(data);
+            if (data.length === 1) {
+                setParsedData(data[0]);
+                setStep("review");
+            } else {
+                setStep("select");
+            }
             const setDataDuration = Date.now() - setDataStart;
             frontendLogger.info('[HomeAnalyze]', 'Parsed data set successfully', {
                 dataSize,
                 setDataDuration
             });
 
-            frontendLogger.info('[HomeAnalyze]', 'Step 5/5: Switching to review page');
-            const setStepStart = Date.now();
-            setStep("review");
-            const setStepDuration = Date.now() - setStepStart;
-            frontendLogger.info('[HomeAnalyze]', 'Step switched to review', {
-                setStepDuration
-            });
             const totalDuration = Date.now() - startTime;
             frontendLogger.info('[HomeAnalyze]', 'Analysis completed successfully', {
                 totalDuration
@@ -291,6 +320,39 @@ function HomeContent() {
             });
             alert(t.common?.messages?.saveFailed || 'Failed to save');
         }
+    };
+
+    const handleSaveSelected = async (selectedIndices: number[]) => {
+        try {
+            const selectedQuestions = selectedIndices.map(i => parsedDataList[i]);
+            const targetNotebookId = initialNotebookId || autoSelectedNotebookId;
+
+            for (const q of selectedQuestions) {
+                await apiClient.post("/api/error-items", {
+                    ...q,
+                    originalImageUrl: currentImage,
+                    subjectId: targetNotebookId || undefined,
+                });
+            }
+
+            alert(`成功保存 ${selectedQuestions.length} 道题目`);
+            setStep("upload");
+            setCurrentImage(null);
+            setParsedDataList([]);
+            setParsedData(null);
+
+            if (targetNotebookId) {
+                router.push(`/notebooks/${targetNotebookId}`);
+            }
+        } catch (error) {
+            console.error("Failed to save selected questions:", error);
+            alert("保存失败，请重试");
+        }
+    };
+
+    const handleEditQuestion = (index: number) => {
+        setParsedData(parsedDataList[index]);
+        setStep("review");
     };
 
     const handleTextSubmit = async (questionText: string) => {
@@ -433,6 +495,23 @@ function HomeContent() {
         }
     };
 
+    const getActiveModelName = () => {
+        if (!config) return "";
+        switch (config.aiProvider) {
+            case 'openai':
+                return config.openai?.instances?.find(i => i.id === config.openai?.activeInstanceId)?.model || 'gpt-4o';
+            case 'gemini':
+                return config.gemini?.model || 'gemini-2.5-flash';
+            case 'azure':
+                return config.azure?.model || config.azure?.deploymentName || 'azure-model';
+            case 'custom':
+                const activeCustomInstance = config.custom?.instances?.find(i => i.id === config.custom?.activeInstanceId);
+                return activeCustomInstance?.model || 'custom-model';
+            default:
+                return 'unknown';
+        }
+    };
+
     return (
         <main className="min-h-screen bg-background">
             <ProgressFeedback
@@ -443,10 +522,15 @@ function HomeContent() {
 
             <div className="container mx-auto p-4 space-y-8 pb-20">
                 {/* Header Section */}
-                <div className="flex justify-between items-start gap-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
                     <UserWelcome />
 
                     <div className="flex items-center gap-2 bg-card p-2 rounded-lg border shadow-sm shrink-0">
+                        {config && (
+                            <span className="text-xs font-medium px-2.5 py-1 bg-secondary/50 rounded-md text-secondary-foreground border" title="Current AI Model">
+                                {getActiveModelName()}
+                            </span>
+                        )}
                         <BroadcastNotification />
                         <SettingsDialog />
                         <Button
@@ -532,7 +616,7 @@ function HomeContent() {
                                 onClick={() => setInputMode("image")}
                             >
                                 <Upload className="h-4 w-4" />
-                                {t.app?.uploadImage || "拍照上传"}
+                                {t.app?.uploadImage || "附件上传"}
                             </button>
                             <button
                                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -543,7 +627,7 @@ function HomeContent() {
                                 onClick={() => setInputMode("text")}
                             >
                                 <PenLine className="h-4 w-4" />
-                                {t.app?.manualInput || "AI解题"}
+                                "文本录入"
                             </button>
                             <button
                                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -592,6 +676,22 @@ function HomeContent() {
                         onClose={() => setIsCropperOpen(false)}
                         onCropComplete={handleCropComplete}
                     />
+                )}
+
+                {step === "select" && (
+                    <div className="py-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <MultiQuestionSelector
+                            questions={parsedDataList}
+                            onSaveSelected={handleSaveSelected}
+                            onEdit={handleEditQuestion}
+                            onCancel={() => {
+                                setStep("upload");
+                                setParsedDataList([]);
+                                setParsedData(null);
+                                setCurrentImage(null);
+                            }}
+                        />
+                    </div>
                 )}
 
                 {step === "review" && parsedData && (

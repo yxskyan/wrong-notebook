@@ -1,5 +1,11 @@
 import { ParsedQuestion } from "@/lib/ai/types";
 
+export interface TokenRates {
+    inputCacheHit?: number;
+    inputCacheMiss?: number;
+    output?: number;
+}
+
 // 通用分页响应类型
 export interface PaginatedResponse<T> {
     items: T[];
@@ -81,7 +87,7 @@ export interface CreateErrorItemRequest extends ParsedQuestion {
     paperLevel?: string;
 }
 
-export type AnalyzeResponse = ParsedQuestion;
+export type AnalyzeResponse = ParsedQuestion[];
 
 export interface UserProfile {
     id: string;
@@ -107,10 +113,22 @@ export interface OpenAIInstance {
     apiKey: string;
     baseUrl: string;
     model: string;
+    pricePerMillionTokens?: number; // 计费费率（每百万Token价格）(旧版)
+    rates?: TokenRates; // 详细费率
+}
+
+export interface CustomAIInstance {
+    id: string;
+    name: string;
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+    pricePerMillionTokens?: number;
+    rates?: TokenRates;
 }
 
 export interface AppConfig {
-    aiProvider: 'gemini' | 'openai' | 'azure';
+    aiProvider: 'gemini' | 'openai' | 'azure' | 'custom';
     allowRegistration?: boolean;
     openai?: {
         instances?: OpenAIInstance[];
@@ -120,6 +138,8 @@ export interface AppConfig {
         apiKey?: string;
         baseUrl?: string;
         model?: string;
+        pricePerMillionTokens?: number;
+        rates?: TokenRates;
     };
     azure?: {
         apiKey?: string;
@@ -127,6 +147,12 @@ export interface AppConfig {
         deploymentName?: string; // 部署名称
         apiVersion?: string;     // API 版本 (如 2024-02-15-preview)
         model?: string;          // 显示用模型名 (如 gpt-4o)
+        pricePerMillionTokens?: number;
+        rates?: TokenRates;
+    };
+    custom?: {
+        instances?: CustomAIInstance[];
+        activeInstanceId?: string;
     };
     prompts?: {
         analyze?: string;

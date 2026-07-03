@@ -6,6 +6,7 @@ import { safeParseParsedQuestion } from './schema';
 import { getMathTagsFromDB, getTagsFromDB } from './tag-service';
 import { createLogger } from '../logger';
 import { normalizeMistakeStatusForSave } from '../mistake-status';
+import { prisma } from '../prisma';
 
 const logger = createLogger('ai:azure');
 
@@ -21,6 +22,10 @@ export interface AzureConfig {
     deploymentName?: string; // 部署名称
     apiVersion?: string;     // API 版本
     model?: string;          // 显示用模型名
+    userId?: string;
+    providerName?: string;
+    pricePerMillionTokens?: number;
+    rates?: import('../../types/api').TokenRates;
 }
 
 export class AzureOpenAIProvider implements AIService {
@@ -28,6 +33,10 @@ export class AzureOpenAIProvider implements AIService {
     private model: string;
     private deployment: string;
     private endpoint: string;
+    private userId?: string;
+    private providerName?: string;
+    private pricePerMillionTokens?: number;
+    private rates?: import('../../types/api').TokenRates;
 
     constructor(config?: AzureConfig) {
         const apiKey = config?.apiKey;
@@ -56,6 +65,10 @@ export class AzureOpenAIProvider implements AIService {
         this.model = config?.model || deployment;
         this.deployment = deployment;
         this.endpoint = endpoint;
+        this.userId = config?.userId;
+        this.providerName = config?.providerName || 'azure';
+        this.pricePerMillionTokens = config?.pricePerMillionTokens || 0;
+        this.rates = config?.rates;
 
         logger.info({
             provider: 'Azure OpenAI',
@@ -63,7 +76,49 @@ export class AzureOpenAIProvider implements AIService {
             deployment: this.deployment,
             endpoint: endpoint,
             apiKeyPrefix: apiKey.substring(0, 8) + '...'
-        }, 'Azure AI Provider initialized');
+        }, 'AI Provider initialized');
+    }
+
+    private async recordUsage(usage?: import('openai').OpenAI.Completions.CompletionUsage & { prompt_tokens_details?: { cached_tokens?: number } }) {
+        if (!this.userId || !usage) return;
+        
+
+        
+        try {
+            const promptTokens = usage.prompt_tokens || 0;
+            const completionTokens = usage.completion_tokens || 0;
+            const totalTokens = usage.total_tokens || 0;
+            
+            const cachedTokens = usage.prompt_tokens_details?.cached_tokens || 0;
+            const uncashedTokens = Math.max(0, promptTokens - cachedTokens);
+            
+            let cost = 0;
+            if (this.rates && (this.rates.inputCacheHit !== undefined || this.rates.inputCacheMiss !== undefined || this.rates.output !== undefined)) {
+                const rateHit = this.rates.inputCacheHit || 0;
+                const rateMiss = this.rates.inputCacheMiss || 0;
+                const rateOut = this.rates.output || 0;
+                cost = (cachedTokens / 1_000_000) * rateHit + 
+                       (uncashedTokens / 1_000_000) * rateMiss + 
+                       (completionTokens / 1_000_000) * rateOut;
+            } else if (this.pricePerMillionTokens) {
+                cost = (totalTokens / 1_000_000) * this.pricePerMillionTokens;
+            }
+            
+            await prisma.tokenUsage.create({
+                data: {
+                    userId: this.userId,
+                    provider: this.providerName || 'azure',
+                    model: this.model,
+                    promptTokens,
+                    completionTokens,
+                    totalTokens,
+                    cost
+                }
+            });
+            logger.debug({ totalTokens, cost }, 'Recorded token usage');
+        } catch (error) {
+            logger.error({ error }, 'Failed to record token usage');
+        }
     }
 
     private extractTag(text: string, tagName: string): string | null {
@@ -79,64 +134,92 @@ export class AzureOpenAIProvider implements AIService {
         return text.substring(startIndex + startTag.length, endIndex).trim();
     }
 
-    private parseResponse(text: string): ParsedQuestion {
+    private parseResponse(text: string): ParsedQuestion[] {
         logger.debug({ textLength: text.length }, 'Parsing AI response');
 
-        const questionText = this.extractTag(text, "question_text");
-        const answerText = this.extractTag(text, "answer_text");
-        const analysis = this.extractTag(text, "analysis");
-        const subjectRaw = this.extractTag(text, "subject");
-        const knowledgePointsRaw = this.extractTag(text, "knowledge_points");
-        const requiresImageRaw = this.extractTag(text, "requires_image");
-        const wrongAnswerText = this.extractTag(text, "wrong_answer_text") || "";
-        const mistakeAnalysis = this.extractTag(text, "mistake_analysis") || "";
-        const mistakeStatusRaw = this.extractTag(text, "mistake_status");
+        // Extract multiple questions if present
+        let questionsText = this.extractTag(text, "questions");
+        let questionBlocks: string[] = [];
 
-        // Basic Validation
-        if (!questionText || !answerText || !analysis) {
-            logger.error({ rawTextSample: text.substring(0, 500) }, 'Missing critical XML tags');
-            throw new Error("Invalid AI response: Missing critical XML tags (<question_text>, <answer_text>, or <analysis>)");
+        if (questionsText) {
+            // Split by </question> and filter empty
+            const parts = questionsText.split('</question>');
+            for (const part of parts) {
+                const startIndex = part.indexOf('<question>');
+                if (startIndex !== -1) {
+                    questionBlocks.push(part.substring(startIndex + '<question>'.length));
+                }
+            }
         }
 
-        // Process Subject
-        let subject: ParsedQuestion['subject'] = '其他';
-        const validSubjects: ParsedQuestion['subject'][] = ["数学", "物理", "化学", "生物", "英语", "语文", "历史", "地理", "政治", "其他"];
-        if (subjectRaw && (validSubjects as string[]).includes(subjectRaw)) {
-            subject = subjectRaw as ParsedQuestion['subject'];
+        // Fallback to whole text if <questions> tags are missing or no <question> found
+        if (questionBlocks.length === 0) {
+            questionBlocks = [text];
         }
 
-        // Process Knowledge Points
-        let knowledgePoints: string[] = [];
-        if (knowledgePointsRaw) {
-            knowledgePoints = knowledgePointsRaw.split(/[,，\n]/).map(k => k.trim()).filter(k => k.length > 0);
+        const results: ParsedQuestion[] = [];
+
+        for (const block of questionBlocks) {
+            const questionText = this.extractTag(block, "question_text");
+            const answerText = this.extractTag(block, "answer_text");
+            const analysis = this.extractTag(block, "analysis");
+            const subjectRaw = this.extractTag(block, "subject");
+            const knowledgePointsRaw = this.extractTag(block, "knowledge_points");
+            const requiresImageRaw = this.extractTag(block, "requires_image");
+            const wrongAnswerText = this.extractTag(block, "wrong_answer_text") || "";
+            const mistakeAnalysis = this.extractTag(block, "mistake_analysis") || "";
+            const mistakeStatusRaw = this.extractTag(block, "mistake_status");
+
+            // Basic Validation
+            if (!questionText || !answerText || !analysis) {
+                logger.warn({ rawTextSample: block.substring(0, 200) }, 'Missing critical XML tags in block, skipping');
+                continue;
+            }
+
+            // Process Subject
+            let subject: ParsedQuestion['subject'] = '其他';
+            const validSubjects = ["数学", "物理", "化学", "生物", "英语", "语文", "历史", "地理", "政治", "其他"];
+            if (subjectRaw && (validSubjects as string[]).includes(subjectRaw)) {
+                subject = subjectRaw as ParsedQuestion['subject'];
+            }
+
+            // Process Knowledge Points
+            let knowledgePoints: string[] = [];
+            if (knowledgePointsRaw) {
+                knowledgePoints = knowledgePointsRaw.split(/[,，\n]/).map(k => k.trim()).filter(k => k.length > 0);
+            }
+
+            // Process requiresImage
+            const requiresImage = requiresImageRaw?.toLowerCase().trim() === 'true';
+            const mistakeStatus = normalizeMistakeStatusForSave(mistakeStatusRaw, wrongAnswerText);
+
+            // Construct Result
+            const result: ParsedQuestion = {
+                questionText,
+                answerText,
+                analysis,
+                wrongAnswerText,
+                mistakeAnalysis,
+                mistakeStatus,
+                subject,
+                knowledgePoints,
+                requiresImage
+            };
+
+            const validation = safeParseParsedQuestion(result);
+            if (validation.success) {
+                results.push(validation.data);
+            } else {
+                logger.warn({ validationError: validation.error.format() }, 'Schema validation warning');
+                results.push(result);
+            }
         }
 
-        // Process requiresImage
-        const requiresImage = requiresImageRaw?.toLowerCase().trim() === 'true';
-        const mistakeStatus = normalizeMistakeStatusForSave(mistakeStatusRaw, wrongAnswerText);
-
-        // Construct Result
-        const result: ParsedQuestion = {
-            questionText,
-            answerText,
-            analysis,
-            wrongAnswerText,
-            mistakeAnalysis,
-            mistakeStatus,
-            subject,
-            knowledgePoints,
-            requiresImage
-        };
-
-        // Final Schema Validation
-        const validation = safeParseParsedQuestion(result);
-        if (validation.success) {
-            logger.debug('Validated successfully via XML tags');
-            return validation.data;
-        } else {
-            logger.warn({ validationError: validation.error.format() }, 'Schema validation warning');
-            return result;
+        if (results.length === 0) {
+            throw new Error("Invalid AI response: Could not parse any valid questions");
         }
+
+        return results;
     }
 
     async analyzeImage(
@@ -146,7 +229,7 @@ export class AzureOpenAIProvider implements AIService {
         grade?: 7 | 8 | 9 | 10 | 11 | 12 | null,
         subject?: string | null,
         gradeSemester?: string | null
-    ): Promise<ParsedQuestion> {
+    ): Promise<ParsedQuestion[]> {
         const config = getAppConfig();
 
         // 从数据库获取各学科标签（参考 openai-provider.ts）
@@ -210,6 +293,9 @@ export class AzureOpenAIProvider implements AIService {
             }
 
             const text = response.choices[0]?.message?.content || "";
+            if (response.usage) {
+                this.recordUsage(response.usage).catch(console.error);
+            }
 
             logger.box('🤖 AI Raw Response', text);
 
@@ -276,6 +362,9 @@ Knowledge Points: ${knowledgePoints.join(", ")}
             });
 
             const text = response.choices[0]?.message?.content || "";
+            if (response.usage) {
+                this.recordUsage(response.usage).catch(console.error);
+            }
 
             logger.box('🤖 AI Raw Response', text);
 
@@ -284,7 +373,7 @@ Knowledge Points: ${knowledgePoints.join(", ")}
 
             logger.box('✅ Parsed & Validated Result', JSON.stringify(parsedResult, null, 2));
 
-            return parsedResult;
+            return parsedResult[0];
 
         } catch (error) {
             logger.box('❌ Error during similar question generation', {
@@ -349,6 +438,9 @@ Knowledge Points: ${knowledgePoints.join(", ")}
             }
 
             const text = response.choices[0]?.message?.content || "";
+            if (response.usage) {
+                this.recordUsage(response.usage).catch(console.error);
+            }
 
             logger.debug({ rawResponse: text }, 'AI raw response');
 
@@ -398,6 +490,9 @@ Knowledge Points: ${knowledgePoints.join(", ")}
             });
 
             const text = response.choices[0]?.message?.content || '';
+            if (response.usage) {
+                this.recordUsage(response.usage).catch(console.error);
+            }
             logger.debug({ rawResponse: text }, 'GeoGebra AI raw response');
 
             if (!text) throw new Error("Empty response from AI");

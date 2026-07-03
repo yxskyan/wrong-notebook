@@ -44,8 +44,10 @@ import { GET as GET_SUGGESTIONS } from '@/app/api/tags/suggestions/route';
 describe('/api/tags', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Default: no session
-        mocks.mockGetServerSession.mockResolvedValue(null);
+        // Default: valid session
+        mocks.mockGetServerSession.mockResolvedValue({
+            user: { id: 'test-user-id', email: 'test@example.com' },
+        });
     });
 
     describe('GET /api/tags/stats (标签统计)', () => {

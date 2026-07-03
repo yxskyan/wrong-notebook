@@ -18,6 +18,7 @@ export async function GET(req: Request) {
     const mastery = searchParams.get("mastery");
     const timeRange = searchParams.get("timeRange");
     const tag = searchParams.get("tag");
+    const mistakeStatus = searchParams.get("mistakeStatus");
 
     // 分页参数
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
@@ -65,6 +66,11 @@ export async function GET(req: Request) {
             whereClause.masteryLevel = mastery === "1" ? { gt: 0 } : 0;
         }
 
+        // Mistake status filter
+        if (mistakeStatus && mistakeStatus !== "all") {
+            whereClause.mistakeStatus = mistakeStatus;
+        }
+
         // Time range filter
         if (timeRange && timeRange !== "all") {
             const now = new Date();
@@ -102,11 +108,13 @@ export async function GET(req: Request) {
 
         // Tag filter (第三级筛选：具体知识点)
         if (tag && !chapter) {
-            // 只有在没有 chapter 筛选时才按 tag 过滤
-            // 因为 chapter 筛选已经更精确了
-            whereClause.knowledgePoints = {
-                contains: tag,
-            };
+            // 如果只有 tag 筛选，需要同时匹配 knowledgePoints 或 tags 关联
+            andConditions.push({
+                OR: [
+                    { knowledgePoints: { contains: tag } },
+                    { tags: { some: { name: tag } } }
+                ]
+            });
         } else if (tag && chapter) {
             // 如果同时有 chapter 和 tag，优先用 tag 进一步过滤
             // 覆盖 chapter 的条件

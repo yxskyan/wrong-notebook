@@ -239,7 +239,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
             `.trim();
 
             // Access private method via type assertion
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.questionText).toBe('求函数 f(x) = x^2 的最小值');
             expect(result.answerText).toBe('最小值为 0');
@@ -258,7 +258,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <requires_image>false</requires_image>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.requiresImage).toBe(false);
         });
@@ -273,7 +273,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <mistake_analysis>移项后没有正确处理常数项。</mistake_analysis>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.wrongAnswerText).toBe('x = 4');
             expect(result.mistakeStatus).toBe('wrong_attempt');
@@ -287,7 +287,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <analysis>测试解析</analysis>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.wrongAnswerText).toBe('');
             expect(result.mistakeAnalysis).toBe('');
@@ -302,7 +302,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <subject>无效学科</subject>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.subject).toBe('其他');
         });
@@ -315,7 +315,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <knowledge_points>知识点1, 知识点2, 知识点3</knowledge_points>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.knowledgePoints).toHaveLength(3);
             expect(result.knowledgePoints).toContain('知识点1');
@@ -331,7 +331,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <knowledge_points>知识点1,知识点2,知识点3</knowledge_points>
             `.trim();
 
-            const result = asPrivateProvider(provider).parseResponse(mockResponse);
+            const result = asPrivateProvider(provider).parseResponse(mockResponse)[0];
 
             expect(result.knowledgePoints).toHaveLength(3);
         });
@@ -342,7 +342,7 @@ describe('Azure OpenAI Provider 响应解析', () => {
 <answer_text>测试答案</answer_text>
             `.trim();
 
-            expect(() => asPrivateProvider(provider).parseResponse(mockResponse)).toThrow('Missing critical XML tags');
+            expect(() => asPrivateProvider(provider).parseResponse(mockResponse)).toThrow('Invalid AI response: Could not parse any valid questions');
         });
     });
 
