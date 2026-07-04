@@ -53,7 +53,7 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
     const [timeFilter, setTimeFilter] = useState<"all" | "week" | "month">("all");
     const [gradeFilter, setGradeFilter] = useState("");
     const [chapterFilter, setChapterFilter] = useState("");
-    const [paperLevelFilter, setPaperLevelFilter] = useState<"all" | "a" | "b" | "other">("all");
+    const [paperLevelFilter, setPaperLevelFilter] = useState<"all" | "unit" | "monthly" | "midterm" | "final" | "quiz" | "other">("all");
     const [mistakeStatusFilter, setMistakeStatusFilter] = useState<"all" | "not_attempted" | "wrong_attempt" | "unknown">("all");
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
@@ -362,18 +362,39 @@ export function ErrorList({ subjectId, subjectName }: ErrorListProps = {}) {
                         {t.filter.all || "All"}
                     </Button>
                     <Button
-                        variant={paperLevelFilter === "a" ? "secondary" : "outline"}
+                        variant={paperLevelFilter === "unit" ? "secondary" : "outline"}
                         size="sm"
-                        onClick={() => setPaperLevelFilter("a")}
+                        onClick={() => setPaperLevelFilter("unit")}
                     >
-                        {t.editor.paperLevels?.a || "Paper A"}
+                        {t.editor.paperLevels?.unit || "Unit Test"}
                     </Button>
                     <Button
-                        variant={paperLevelFilter === "b" ? "secondary" : "outline"}
+                        variant={paperLevelFilter === "monthly" ? "secondary" : "outline"}
                         size="sm"
-                        onClick={() => setPaperLevelFilter("b")}
+                        onClick={() => setPaperLevelFilter("monthly")}
                     >
-                        {t.editor.paperLevels?.b || "Paper B"}
+                        {t.editor.paperLevels?.monthly || "Monthly Exam"}
+                    </Button>
+                    <Button
+                        variant={paperLevelFilter === "midterm" ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => setPaperLevelFilter("midterm")}
+                    >
+                        {t.editor.paperLevels?.midterm || "Midterm"}
+                    </Button>
+                    <Button
+                        variant={paperLevelFilter === "final" ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => setPaperLevelFilter("final")}
+                    >
+                        {t.editor.paperLevels?.final || "Final Exam"}
+                    </Button>
+                    <Button
+                        variant={paperLevelFilter === "quiz" ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => setPaperLevelFilter("quiz")}
+                    >
+                        {t.editor.paperLevels?.quiz || "Class Quiz"}
                     </Button>
                     <Button
                         variant={paperLevelFilter === "other" ? "secondary" : "outline"}

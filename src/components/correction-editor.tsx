@@ -54,7 +54,7 @@ export function CorrectionEditor({ initialData, onSave, onCancel, imagePreview, 
         mistakeStatus: initialData.mistakeStatus || "unknown",
         subjectId: initialSubjectId,
         gradeSemester: "",
-        paperLevel: "a"
+        paperLevel: "quiz"
     });
     const { t, language } = useLanguage();
     const [isReanswering, setIsReanswering] = useState(false);
@@ -265,15 +265,18 @@ export function CorrectionEditor({ initialData, onSave, onCancel, imagePreview, 
                         <div className="space-y-2">
                             <Label>{t.editor.paperLevel || "Paper Level"}</Label>
                             <Select
-                                value={data.paperLevel || "a"}
+                                value={data.paperLevel || "quiz"}
                                 onValueChange={(val) => setData({ ...data, paperLevel: val })}
                             >
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="a">{t.editor.paperLevels?.a || "Paper A"}</SelectItem>
-                                    <SelectItem value="b">{t.editor.paperLevels?.b || "Paper B"}</SelectItem>
+                                    <SelectItem value="unit">{t.editor.paperLevels?.unit || "Unit Test"}</SelectItem>
+                                    <SelectItem value="monthly">{t.editor.paperLevels?.monthly || "Monthly Exam"}</SelectItem>
+                                    <SelectItem value="midterm">{t.editor.paperLevels?.midterm || "Midterm"}</SelectItem>
+                                    <SelectItem value="final">{t.editor.paperLevels?.final || "Final Exam"}</SelectItem>
+                                    <SelectItem value="quiz">{t.editor.paperLevels?.quiz || "Class Quiz"}</SelectItem>
                                     <SelectItem value="other">{t.editor.paperLevels?.other || "Other"}</SelectItem>
                                 </SelectContent>
                             </Select>

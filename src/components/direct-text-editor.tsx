@@ -45,7 +45,7 @@ export function DirectTextEditor({ onSubmit, defaultNotebookId, defaultNotebookN
     const [knowledgePoints, setKnowledgePoints] = useState<string[]>([]);
     const [subjectId, setSubjectId] = useState(defaultNotebookId || "");
     const [gradeSemester, setGradeSemester] = useState("");
-    const [paperLevel, setPaperLevel] = useState("a");
+    const [paperLevel, setPaperLevel] = useState("quiz");
 
     const handleSubmit = async () => {
         if (!questionText.trim()) return;
@@ -77,7 +77,7 @@ export function DirectTextEditor({ onSubmit, defaultNotebookId, defaultNotebookN
         setMistakeStatus("unknown");
         setKnowledgePoints([]);
         setGradeSemester("");
-        setPaperLevel("a");
+        setPaperLevel("quiz");
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -185,8 +185,11 @@ export function DirectTextEditor({ onSubmit, defaultNotebookId, defaultNotebookN
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="a">{t.editor?.paperLevels?.a || "A卷/基础"}</SelectItem>
-                                <SelectItem value="b">{t.editor?.paperLevels?.b || "B卷/提高"}</SelectItem>
+                                <SelectItem value="unit">{t.editor?.paperLevels?.unit || "单元卷"}</SelectItem>
+                                <SelectItem value="monthly">{t.editor?.paperLevels?.monthly || "月考卷"}</SelectItem>
+                                <SelectItem value="midterm">{t.editor?.paperLevels?.midterm || "期中卷"}</SelectItem>
+                                <SelectItem value="final">{t.editor?.paperLevels?.final || "期末卷"}</SelectItem>
+                                <SelectItem value="quiz">{t.editor?.paperLevels?.quiz || "随堂卷"}</SelectItem>
                                 <SelectItem value="other">{t.editor?.paperLevels?.other || "其他"}</SelectItem>
                             </SelectContent>
                         </Select>

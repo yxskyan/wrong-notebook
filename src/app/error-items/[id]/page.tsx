@@ -61,7 +61,7 @@ export default function ErrorDetailPage() {
     const [tagsInput, setTagsInput] = useState<string[]>([]);
     const [isEditingMetadata, setIsEditingMetadata] = useState(false);
     const [gradeSemesterInput, setGradeSemesterInput] = useState("");
-    const [paperLevelInput, setPaperLevelInput] = useState("a");
+    const [paperLevelInput, setPaperLevelInput] = useState("quiz");
     const [notebookInput, setNotebookInput] = useState<string | null>(null);
 
     const [educationStage, setEducationStage] = useState<string | undefined>(undefined);
@@ -244,7 +244,7 @@ export default function ErrorDetailPage() {
         setIsEditingMetadata(false);
         setNotebookInput(null);
         setGradeSemesterInput("");
-        setPaperLevelInput("a");
+        setPaperLevelInput("quiz");
     };
 
     const [isEditingQuestion, setIsEditingQuestion] = useState(false);
@@ -625,8 +625,11 @@ export default function ErrorDetailPage() {
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="a">{t.editor.paperLevels?.a || 'Paper A'}</SelectItem>
-                                                        <SelectItem value="b">{t.editor.paperLevels?.b || 'Paper B'}</SelectItem>
+                                                        <SelectItem value="unit">{t.editor.paperLevels?.unit || 'Unit Test'}</SelectItem>
+                                                        <SelectItem value="monthly">{t.editor.paperLevels?.monthly || 'Monthly Exam'}</SelectItem>
+                                                        <SelectItem value="midterm">{t.editor.paperLevels?.midterm || 'Midterm'}</SelectItem>
+                                                        <SelectItem value="final">{t.editor.paperLevels?.final || 'Final Exam'}</SelectItem>
+                                                        <SelectItem value="quiz">{t.editor.paperLevels?.quiz || 'Class Quiz'}</SelectItem>
                                                         <SelectItem value="other">{t.editor.paperLevels?.other || 'Other'}</SelectItem>
                                                     </SelectContent>
                                                 </Select>
@@ -659,7 +662,7 @@ export default function ErrorDetailPage() {
                                             <div className="flex justify-between">
                                                 <span className="text-muted-foreground">{t.filter.paperLevel}:</span>
                                                 <span className="font-medium">
-                                                    {item.paperLevel ? (t.editor.paperLevels?.[item.paperLevel as 'a' | 'b' | 'other'] || item.paperLevel) : (t.common?.notSet || 'Not set')}
+                                                    {item.paperLevel ? (t.editor.paperLevels?.[item.paperLevel as 'unit' | 'monthly' | 'midterm' | 'final' | 'quiz' | 'other'] || item.paperLevel) : (t.common?.notSet || 'Not set')}
                                                 </span>
                                             </div>
                                         </div>
