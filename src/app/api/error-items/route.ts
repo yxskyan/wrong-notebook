@@ -53,17 +53,17 @@ export async function POST(req: Request) {
 
         // 查找用户
         let user;
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             user = await prisma.user.findUnique({
-                where: { email: session.user.email },
+                where: { id: session.user.id },
             });
-            logger.debug({ userId: user?.id, email: session.user.email }, 'User lookup result');
+            logger.debug({ userId: user?.id, id: session.user.id }, 'User lookup result');
         } else {
             logger.warn('No session email found');
         }
 
         if (!user) {
-            logger.warn({ sessionEmail: session?.user?.email }, 'User not found in DB');
+            logger.warn({ sessionEmail: session?.user?.id }, 'User not found in DB');
             return unauthorized("No user found in DB");
         }
 

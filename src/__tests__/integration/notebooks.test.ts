@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     },
     mockSession: {
         user: {
+            id: 'mock_user_id',
             email: 'user@example.com',
             name: 'Test User',
         },

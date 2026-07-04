@@ -25,9 +25,9 @@ export async function GET(req: Request) {
         const stage = searchParams.get("stage") || undefined;
 
         let user;
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             user = await prisma.user.findUnique({
-                where: { email: session.user.email },
+                where: { id: session.user.id },
                 select: { id: true }
             });
         }

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     const session = await getServerSession(authOptions);
 
     try {
-        if (!session?.user?.email) {
+        if (!session?.user?.id) {
             return unauthorized("Authentication required");
         }
 

@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     // Let's assume for a single-user or small-team app, 'user data' means 'data belonging to users'.
 
     try {
-        logger.info({ email: session.user.email }, 'System reset initiated');
+        logger.info({ id: session.user.id }, 'System reset initiated');
 
         await prisma.$transaction(async (tx) => {
             // 1. Delete Practice Records (dependent on nothing usually, or User/ErrorItem)
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
                 await tx.user.deleteMany({
                     where: {
                         email: {
-                            not: session.user.email
+                            not: session.user.id
                         }
                     }
                 });

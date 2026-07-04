@@ -20,9 +20,9 @@ export async function GET(
 
     try {
         let user;
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             user = await prisma.user.findUnique({
-                where: { email: session.user.email },
+                where: { id: session.user.id },
             });
         }
 
@@ -69,9 +69,9 @@ export async function PUT(
 
     try {
         let user;
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             user = await prisma.user.findUnique({
-                where: { email: session.user.email },
+                where: { id: session.user.id },
             });
         }
 
@@ -132,9 +132,9 @@ export async function DELETE(
 
     try {
         let user;
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             user = await prisma.user.findUnique({
-                where: { email: session.user.email },
+                where: { id: session.user.id },
             });
         }
 

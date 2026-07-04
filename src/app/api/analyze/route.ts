@@ -69,11 +69,11 @@ export async function POST(req: Request) {
         let userGradeSemester: string | null = null;
         let subjectName: 'math' | 'physics' | 'chemistry' | 'biology' | 'english' | 'chinese' | 'history' | 'geography' | 'politics' | null = null;
 
-        if (session?.user?.email) {
+        if (session?.user?.id) {
             try {
                 // 获取用户信息
                 const user = await prisma.user.findUnique({
-                    where: { email: session.user.email },
+                    where: { id: session.user.id },
                     select: { educationStage: true, enrollmentYear: true }
                 });
 

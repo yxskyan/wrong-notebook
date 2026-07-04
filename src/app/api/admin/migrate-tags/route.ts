@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     }
 
     try {
-        logger.info({ email: session.user.email }, 'Tag migration initiated');
+        logger.info({ id: session.user.id }, 'Tag migration initiated');
         let totalCreated = 0;
         let associationsRestored = 0;
         let customTagsCreated = 0;

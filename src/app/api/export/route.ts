@@ -10,12 +10,12 @@ const logger = createLogger('api:export');
 export async function GET(req: Request) {
     const session = await getServerSession(authOptions);
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
         return unauthorized("Not authenticated");
     }
 
     const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
+        where: { id: session.user.id },
     });
 
     if (!user) {
