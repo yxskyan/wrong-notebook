@@ -53,7 +53,7 @@ interface ProfileFormState {
 }
 
 export function SettingsDialog() {
-    const { data: session } = useSession();
+    const { data: session, update } = useSession();
     const { t, language, setLanguage } = useLanguage();
     const [open, setOpen] = useState(false);
     const dialogContentRef = useRef<HTMLDivElement>(null);
@@ -270,7 +270,14 @@ export function SettingsDialog() {
             setConfirmPassword(""); // Clear confirm password field
             setShowPassword(false);
             setShowConfirmPassword(false);
-            window.location.reload(); // Reload to update user name in UI
+            
+            // Force session update so the frontend gets the new name and email
+            await update({
+                name: payload.name,
+                email: payload.email,
+            });
+            // Optional: still reload if needed, but the session will be updated
+            // window.location.reload(); 
         } catch (error: any) {
             frontendLogger.error('[SettingsDialog]', 'Failed to update profile', { error: error?.data?.message || error?.message || String(error) });
             const message = error.data?.message || (t.settings?.messages?.updateFailed || "Update failed");

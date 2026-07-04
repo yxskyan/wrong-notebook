@@ -106,7 +106,15 @@ export const authOptions: NextAuthOptions = {
                 }
             }
         },
-        async jwt({ token, user, account, profile }) {
+        async jwt({ token, user, trigger, session }) {
+            if (trigger === "update" && session) {
+                logger.debug('JWT callback - Session update');
+                return {
+                    ...token,
+                    name: session.name || token.name,
+                    email: session.email || token.email,
+                };
+            }
             if (user) {
                 logger.debug({ userId: user.id }, 'JWT callback - Initial signin');
                 return {
